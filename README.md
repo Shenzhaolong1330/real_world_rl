@@ -99,7 +99,7 @@ Or, for citing our work presented at the conference of RSS 2025:
     title={ConRFT: A Reinforced Fine-tuning Method for VLA Models via Consistency Policy}, 
     author={Yuhui Chen and Shuai Tian and Shugao Liu and Yingting Zhou and Haoran Li and Dongbin Zhao}, 
     booktitle={Proceedings of Robotics: Science and Systems, {RSS} 2025, Los Angeles, CA, USA, Jun 21-25, 2025}, 
-    doi={10.15607/RSS.2025.XXI.019
+    doi={10.15607/RSS.2025.XXI.019},
 } 
 ```
 
