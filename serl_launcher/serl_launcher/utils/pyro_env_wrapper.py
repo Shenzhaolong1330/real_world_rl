@@ -10,6 +10,7 @@ import numpy as np
 from gymnasium import spaces
 from gymnasium import Env
 from typing import Optional, Tuple, Dict, Any
+import base64
 
 # Register numpy array serializer for Pyro5
 from Pyro5.serializers import SerpentSerializer
@@ -25,7 +26,20 @@ def numpy_to_dict(arr):
 
 def dict_to_numpy(classname, data):
     """Convert dict back to numpy array"""
-    return np.frombuffer(data['data'], dtype=data['dtype']).reshape(data['shape'])
+    # Handle serpent's bytes serialization
+    if isinstance(data['data'], str):
+        # Serpent encodes bytes as base64 string
+        byte_data = base64.b64decode(data['data'])
+    elif isinstance(data['data'], dict) and 'data' in data['data']:
+        # Nested serialization
+        byte_data = base64.b64decode(data['data']['data'])
+    elif isinstance(data['data'], (bytes, bytearray)):
+        byte_data = data['data']
+    else:
+        # Try to convert list to bytes
+        byte_data = bytes(data['data']) if isinstance(data['data'], list) else data['data']
+    
+    return np.frombuffer(byte_data, dtype=data['dtype']).reshape(data['shape'])
 
 # Register the custom serializer
 SerpentSerializer.register_class_to_dict(np.ndarray, numpy_to_dict)
