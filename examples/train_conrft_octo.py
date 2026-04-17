@@ -59,9 +59,11 @@ flags.DEFINE_float("bc_weight", 1.0, "bc_weight")
 flags.DEFINE_integer("pretrain_steps", 2000, "Number of pretrain steps.")
 
 flags.DEFINE_boolean(
-    "debug", False, "Debug mode."
-)  # debug mode will disable wandb logging
-
+    "debug", False, "Debug mode.")
+  # debug mode will disable wandb logging
+flags.DEFINE_boolean("use_pyro_env", False, "Use Pyro5 remote environment (for actor on remote machine)")
+flags.DEFINE_string("pyro_env_ip", None, "IP address of the Pyro5 environment server (local machine)")
+flags.DEFINE_integer("pyro_env_port", 9090, "Port of the Pyro5 environment server")
 
 devices = jax.local_devices()
 num_devices = len(devices)
@@ -460,8 +462,18 @@ def main(_):
     rng, sampling_rng = jax.random.split(rng)
 
     assert FLAGS.exp_name in CONFIG_MAPPING, "Experiment folder not found."
-    env = config.get_environment(
-        fake_env=FLAGS.learner, save_video=FLAGS.eval_checkpoint_step, classifier=True, stack_obs_num=2)
+    
+    # Create environment based on mode
+    if FLAGS.use_pyro_env and FLAGS.actor:
+        # Actor on remote machine using Pyro5 to access local environment
+        from serl_launcher.utils.pyro_env_wrapper import create_pyro_env
+        print_green(f"Connecting to Pyro5 remote environment at {FLAGS.pyro_env_ip}:{FLAGS.pyro_env_port}")
+        env = create_pyro_env(FLAGS.pyro_env_ip, FLAGS.pyro_env_port)
+    else:
+        # Local environment (learner uses fake_env, local actor uses real env)
+        env = config.get_environment(
+            fake_env=FLAGS.learner, save_video=FLAGS.eval_checkpoint_step, classifier=True, stack_obs_num=2)
+    
     env = RecordEpisodeStatistics(env)
 
     FLAGS.reward_neg = config.reward_neg
