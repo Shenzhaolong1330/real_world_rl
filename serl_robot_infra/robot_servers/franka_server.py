@@ -17,16 +17,29 @@ import geometry_msgs.msg as geom_msg
 from dynamic_reconfigure.client import Client as ReconfClient
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string("robot_ip", "172.16.0.2", "IP address of the franka robot's controller box")
-flags.DEFINE_string("gripper_ip", "192.168.1.114", "IP address of the robotiq gripper if being used")
-flags.DEFINE_string("gripper_type", "Robotiq", "Type of gripper to use: Robotiq, Franka, or None")
+flags.DEFINE_string(
+    "robot_ip", "172.16.0.2", "IP address of the franka robot's controller box"
+)
+flags.DEFINE_string(
+    "gripper_ip", "192.168.1.114", "IP address of the robotiq gripper if being used (TCP mode)"
+)
+flags.DEFINE_string(
+    "gripper_device", "/dev/ttyUSB0", "Serial device for robotiq gripper (RTU mode, e.g., /dev/ttyUSB0)"
+)
+flags.DEFINE_boolean(
+    "gripper_use_rtu", True, "Use RTU (RS-485/USB) connection for gripper. Set False for TCP/Ethernet."
+)
+flags.DEFINE_string(
+    "gripper_type", "Robotiq", "Type of gripper to use: Robotiq, Franka, or None"
+)
 flags.DEFINE_list(
     "reset_joint_target",
     [0, 0, 0, -1.9, -0, 2, 0],
     "Target joint angles for the robot to reset to",
 )
 flags.DEFINE_string("flask_url", 
-    "127.0.0.1",
+    # "127.0.0.1",
+    "0.0.0.0",
     "URL for the flask server to run on."
 )
 flags.DEFINE_string("ros_port", "11311", "Port for the ROS master to run on.")
@@ -56,10 +69,24 @@ class FrankaServer:
             self._set_jacobian,
         )
         time.sleep(1)
-        self.state_sub = rospy.Subscriber("franka_state_controller/franka_states", FrankaState, self._set_currpos)
+        self.state_sub = rospy.Subscriber(
+            "franka_state_controller/franka_states", FrankaState, self._set_currpos
+        )
 
     def start_impedance(self):
         """Launches the impedance controller"""
+        # Check if impedance controller is already running
+        try:
+            from controller_manager_msgs.srv import ListControllers
+            list_controllers = rospy.ServiceProxy('/controller_manager/list_controllers', ListControllers)
+            response = list_controllers()
+            for controller in response.controller:
+                if controller.name == 'cartesian_impedance_controller' and controller.state == 'running':
+                    print("Impedance controller already running, skipping launch")
+                    return
+        except Exception as e:
+            print(f"Could not check controller status: {e}")
+        
         self.imp = subprocess.Popen(
             [
                 "roslaunch",
@@ -181,11 +208,22 @@ def main(_):
 
     webapp = Flask(__name__)
 
+    # Check if roscore is already running
     try:
-        roscore = subprocess.Popen(f"roscore -p {FLAGS.ros_port}", shell=True)
-        time.sleep(1)
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex(('localhost', int(FLAGS.ros_port)))
+        sock.close()
+        if result == 0:
+            print(f"roscore already running on port {FLAGS.ros_port}")
+            roscore = None
+        else:
+            print(f"Starting roscore on port {FLAGS.ros_port}")
+            roscore = subprocess.Popen(f"roscore -p {FLAGS.ros_port}", shell=True)
+            time.sleep(2)
     except Exception as e:
-        raise Exception("roscore not running", e)
+        print(f"Warning: Could not check/start roscore: {e}")
+        roscore = None
 
     # Start ros node
     rospy.init_node("franka_control_api")
@@ -193,7 +231,17 @@ def main(_):
     if GRIPPER_TYPE == "Robotiq":
         from robot_servers.robotiq_gripper_server import RobotiqGripperServer
 
-        gripper_server = RobotiqGripperServer(gripper_ip=GRIPPER_IP)
+        # Use RTU mode by default for RS-485/USB connection
+        if FLAGS.gripper_use_rtu:
+            gripper_server = RobotiqGripperServer(
+                gripper_device=FLAGS.gripper_device, 
+                use_rtu=True
+            )
+        else:
+            gripper_server = RobotiqGripperServer(
+                gripper_device=FLAGS.gripper_ip, 
+                use_rtu=False
+            )
     elif GRIPPER_TYPE == "Franka":
         from robot_servers.franka_gripper_server import FrankaGripperServer
 
@@ -309,14 +357,14 @@ def main(_):
     # Route for Opening the Gripper
     @webapp.route("/open_gripper", methods=["POST"])
     def open():
-        # print("open")
+        print("open")
         gripper_server.open()
         return "Opened"
 
     # Route for Closing the Gripper
     @webapp.route("/close_gripper", methods=["POST"])
     def close():
-        # print("close")
+        print("close")
         gripper_server.close()
         return "Closed"
 

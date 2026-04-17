@@ -7,14 +7,30 @@ from robot_servers.gripper_server import GripperServer
 
 
 class RobotiqGripperServer(GripperServer):
-    def __init__(self, gripper_ip):
+    def __init__(self, gripper_device="/dev/ttyUSB0", use_rtu=True):
+        """
+        Initialize Robotiq gripper server.
+        
+        Args:
+            gripper_device: For RTU mode, use serial device path (e.g., /dev/ttyUSB0)
+                           For TCP mode, use IP address (e.g., 192.168.1.11)
+            use_rtu: True for RS-485/USB connection, False for TCP/Ethernet connection
+        """
         super().__init__()
+        self.use_rtu = use_rtu
+        
+        # Select the appropriate node based on connection type
+        if use_rtu:
+            node_name = "Robotiq2FGripperRtuNode.py"
+        else:
+            node_name = "Robotiq2FGripperTcpNode.py"
+        
         self.gripper = subprocess.Popen(
             [
                 "rosrun",
                 "robotiq_2f_gripper_control",
-                "Robotiq2FGripperTcpNode.py",
-                gripper_ip,
+                node_name,
+                gripper_device,
             ],
             stdout=subprocess.PIPE,
         )
@@ -83,7 +99,7 @@ class RobotiqGripperServer(GripperServer):
             command.rSP = 50
 
         elif char == "o":
-            command.rPR = 175
+            command.rPR = 0
             command.rSP = 255
 
         # If the command entered is a int, assign this value to rPR
