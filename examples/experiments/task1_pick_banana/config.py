@@ -14,8 +14,8 @@ from serl_launcher.wrappers.serl_obs_wrappers import SERLObsWrapper
 from serl_launcher.wrappers.chunking import ChunkingWrapper
 from serl_launcher.networks.reward_classifier import load_classifier_func
 
-from experiments.config import DefaultTrainingConfig
-from experiments.task1_pick_banana.wrapper import PickBananaEnv, GripperPenaltyWrapper
+from ..config import DefaultTrainingConfig
+from .wrapper import PickBananaEnv, GripperPenaltyWrapper
 
 
 class EnvConfig(DefaultEnvConfig):
@@ -24,22 +24,22 @@ class EnvConfig(DefaultEnvConfig):
     SERVER_URL: str = "http://127.0.0.2:5000/"  # ⚠️ Change this for remote deployment
     REALSENSE_CAMERAS = {
         "wrist_1": {
-            "serial_number": "115222071051",
+            "serial_number": "243322071821",
             "dim": (1280, 720),
             "exposure": 10500,
         },
         "side_policy_256": {
-            "serial_number": "242422305075",
+            "serial_number": "344322074412",
             "dim": (1280, 720),
             "exposure": 13000,
         },
         "side_classifier": {
-            "serial_number": "242422305075", 
+            "serial_number": "344322074412", 
             "dim": (1280, 720),
             "exposure": 13000,
         },
         "demo": {
-            "serial_number": "242422305075", 
+            "serial_number": "344322074412", 
             "dim": (1280, 720),
             "exposure": 13000,
         },

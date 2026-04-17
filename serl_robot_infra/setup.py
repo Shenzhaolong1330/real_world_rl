@@ -8,7 +8,7 @@ setup(
         "gymnasium",
         "pyrealsense2",
         "pymodbus==2.5.3",
-        "opencv-python",
+        "opencv-python<4.13",
         "pyquaternion",
         "pyspacemouse",
         "hidapi",

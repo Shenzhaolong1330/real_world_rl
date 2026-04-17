@@ -1,4 +1,5 @@
 import pickle as pkl
+from pathlib import Path
 import jax
 from jax import numpy as jnp
 import flax.linen as nn
@@ -10,6 +11,27 @@ from typing import Callable, Dict, List
 
 from serl_launcher.vision.resnet_v1 import resnetv1_configs, PreTrainedResNetEncoder
 from serl_launcher.common.encoding import EncodingWrapper
+
+
+def _resolve_pretrained_encoder_path(pretrained_encoder_path: str) -> Path:
+    path = Path(pretrained_encoder_path)
+    if path.is_file():
+        return path
+
+    module_dir = Path(__file__).resolve().parent
+    module_relative = (module_dir / path).resolve()
+    if module_relative.is_file():
+        return module_relative
+
+    repo_root = Path(__file__).resolve().parents[3]
+    default_repo_path = repo_root / "examples" / "experiments" / "resnet10_params.pkl"
+    if default_repo_path.is_file():
+        return default_repo_path
+
+    raise FileNotFoundError(
+        f"Could not find pretrained encoder file '{pretrained_encoder_path}'. "
+        f"Tried: '{path.resolve()}', '{module_relative}', '{default_repo_path}'."
+    )
 
 
 class BinaryClassifier(nn.Module):
@@ -80,7 +102,8 @@ def create_classifier(
         tx=optax.adam(learning_rate=1e-4),
     )
 
-    with open(pretrained_encoder_path, "rb") as f:
+    resolved_pretrained_encoder_path = _resolve_pretrained_encoder_path(pretrained_encoder_path)
+    with open(resolved_pretrained_encoder_path, "rb") as f:
         encoder_params = pkl.load(f)
     param_count = sum(x.size for x in jax.tree_leaves(encoder_params))
     print(

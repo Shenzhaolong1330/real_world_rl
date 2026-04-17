@@ -1,7 +1,14 @@
 """ Test the spacemouse output. """
+import os
+import sys
 import time
 import numpy as np
-from franka_env.spacemouse.spacemouse_expert import SpaceMouseExpert
+
+try:
+    from franka_env.spacemouse.spacemouse_expert import SpaceMouseExpert
+except ModuleNotFoundError:
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+    from franka_env.spacemouse.spacemouse_expert import SpaceMouseExpert
 
 
 def test_spacemouse():
