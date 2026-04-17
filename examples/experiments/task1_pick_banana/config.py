@@ -143,3 +143,12 @@ class TrainConfig(DefaultTrainingConfig):
             env = MultiCameraBinaryRewardClassifierWrapper(env, reward_func)
         env = GripperPenaltyWrapper(env, penalty=-0.2)
         return env
+
+
+def get_environment(fake_env=False, save_video=False, classifier=False, stack_obs_num=1):
+    return TrainConfig().get_environment(
+        fake_env=fake_env,
+        save_video=save_video,
+        classifier=classifier,
+        stack_obs_num=stack_obs_num,
+    )
