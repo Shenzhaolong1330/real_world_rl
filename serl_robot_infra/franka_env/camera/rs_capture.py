@@ -20,15 +20,13 @@ class RSCapture:
             )
         self.serial_number = serial_number
         self.depth = depth
+        self.dim = dim
+        self.fps = fps
+        self.exposure = exposure
+        self.timeout_error_count = 0
         self.pipe = rs.pipeline()
         self.cfg = rs.config()
-        self.cfg.enable_device(self.serial_number)
-        self.cfg.enable_stream(rs.stream.color, dim[0], dim[1], rs.format.bgr8, fps)
-        if self.depth:
-            self.cfg.enable_stream(rs.stream.depth, dim[0], dim[1], rs.format.z16, fps)
-        self.profile = self.pipe.start(self.cfg)
-        self.s = self.profile.get_device().query_sensors()[0]
-        self.s.set_option(rs.option.exposure, exposure)
+        self._start_pipeline()
 
         # Create an align object
         # rs.align allows us to perform alignment of depth frames to others frames
@@ -36,8 +34,36 @@ class RSCapture:
         align_to = rs.stream.color
         self.align = rs.align(align_to)
 
+    def _start_pipeline(self):
+        self.cfg.enable_device(self.serial_number)
+        self.cfg.enable_stream(rs.stream.color, self.dim[0], self.dim[1], rs.format.bgr8, self.fps)
+        if self.depth:
+            self.cfg.enable_stream(rs.stream.depth, self.dim[0], self.dim[1], rs.format.z16, self.fps)
+        self.profile = self.pipe.start(self.cfg)
+        self.s = self.profile.get_device().query_sensors()[0]
+        self.s.set_option(rs.option.exposure, self.exposure)
+
+    def _restart_pipeline(self):
+        try:
+            self.pipe.stop()
+        except Exception:
+            pass
+        self.pipe = rs.pipeline()
+        self.cfg = rs.config()
+        self._start_pipeline()
+
     def read(self):
-        frames = self.pipe.wait_for_frames()
+        try:
+            frames = self.pipe.wait_for_frames(timeout_ms=1000)
+            self.timeout_error_count = 0
+        except RuntimeError as error:
+            if "Frame didn't arrive" in str(error):
+                self.timeout_error_count += 1
+                if self.timeout_error_count >= 3:
+                    self._restart_pipeline()
+                    self.timeout_error_count = 0
+                return False, None
+            raise
         aligned_frames = self.align.process(frames)
         color_frame = aligned_frames.get_color_frame()
         if self.depth:
