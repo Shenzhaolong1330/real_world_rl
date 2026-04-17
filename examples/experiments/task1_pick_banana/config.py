@@ -19,7 +19,9 @@ from experiments.task1_pick_banana.wrapper import PickBananaEnv, GripperPenaltyW
 
 
 class EnvConfig(DefaultEnvConfig):
-    SERVER_URL: str = "http://127.0.0.2:5000/"
+    # For remote deployment, change to robot machine IP
+    # Example: SERVER_URL = "http://192.168.1.100:5000/"
+    SERVER_URL: str = "http://127.0.0.2:5000/"  # ⚠️ Change this for remote deployment
     REALSENSE_CAMERAS = {
         "wrist_1": {
             "serial_number": "115222071051",

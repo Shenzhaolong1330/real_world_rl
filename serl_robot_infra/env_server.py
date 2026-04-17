@@ -5,11 +5,32 @@ Run this on the local machine with Franka robot and RealSense cameras.
 """
 
 import Pyro5.api
+import Pyro5.errors
 import numpy as np
 from gymnasium import spaces
 import argparse
 import sys
 import os
+
+# Register numpy array serializer for Pyro5
+from Pyro5.serializers import SerpentSerializer
+
+def numpy_to_dict(arr):
+    """Convert numpy array to dict for serialization"""
+    return {
+        '__class__': 'numpy.ndarray',
+        'data': arr.tobytes(),
+        'dtype': str(arr.dtype),
+        'shape': arr.shape
+    }
+
+def dict_to_numpy(classname, data):
+    """Convert dict back to numpy array"""
+    return np.frombuffer(data['data'], dtype=data['dtype']).reshape(data['shape'])
+
+# Register the custom serializer
+SerpentSerializer.register_class_to_dict(np.ndarray, numpy_to_dict)
+SerpentSerializer.register_dict_to_class('numpy.ndarray', dict_to_numpy)
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
