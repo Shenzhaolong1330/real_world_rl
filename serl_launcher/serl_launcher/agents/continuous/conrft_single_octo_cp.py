@@ -36,9 +36,14 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         grad_params: Optional[Params] = None,
         train: bool = True,
     ) -> jax.Array:
-        """
-        Forward pass for critic network.
-        Pass grad_params to use non-default parameters (e.g. for gradients).
+        """执行 critic 前向计算，输出每个 Q 网络对动作价值的估计。
+
+        作用：
+        - 在训练或评估时计算 $Q_\theta(s,a)$。
+        - 支持通过 ``grad_params`` 注入临时参数（例如在 loss 里做梯度计算）。
+
+        返回：
+        - 形状通常为 ``(critic_ensemble_size, batch_size)`` 或带动作采样维的张量。
         """
         if train:
             assert rng is not None, "Must specify rng when training"
@@ -58,9 +63,11 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         actions: jax.Array,
         rng: PRNGKey,
     ) -> jax.Array:
-        """
-        Forward pass for target critic network.
-        Pass grad_params to use non-default parameters (e.g. for gradients).
+        """执行 target critic 前向计算。
+
+        作用：
+        - 使用 ``self.state.target_params`` 计算目标 Q 值。
+        - 用于 TD 目标构造，提升训练稳定性（软更新目标网络）。
         """
         return self.forward_critic(
             observations,
@@ -84,9 +91,12 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         repeat: int = -1,
         stop_octo_gradient: bool = True,
     ) -> distrax.Distribution:
-        """
-        Forward pass for policy network.
-        Pass grad_params to use non-default parameters (e.g. for gradients).
+        """执行 actor/一致性策略前向计算。
+
+        作用：
+        - 在给定任务与观测下生成动作（或扩散/一致性中间量）。
+        - 支持 ``x_t``、``sigmas`` 输入，用于一致性蒸馏路径。
+        - 支持 ``repeat`` 一次采样多组动作，供 CQL 使用。
         """
         rng, noise_rng = jax.random.split(rng, 2)
         if train:
@@ -117,6 +127,11 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         repeat=None,
         **kwargs,
     ):
+        """调用策略并返回采样动作。
+
+        作用：
+        - 统一封装策略采样接口，供 CQL 随机动作集合构造复用。
+        """
         rng, sample_rng = jax.random.split(rng)
         new_actions, _ = self.forward_policy(
             tasks, obs, action_embeddings, repeat=repeat, rng=rng, grad_params=grad_params, train=True)
@@ -124,7 +139,7 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         return new_actions
 
     def _compute_next_actions(self, batch, rng, repeat=-1):
-        """shared computation between loss functions"""
+        """计算下一时刻动作 $a'\sim\pi(s')$，供 critic 目标构造复用。"""
         batch_size = batch["rewards"].shape[0]
 
         next_actions, _ = self.forward_policy(
@@ -133,9 +148,18 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         return next_actions
 
     def _get_cql_q_diff(self, batch, rng: PRNGKey, grad_params: Optional[Params] = None):
-        """
-        most of the CQL loss logic is here
-        It is needed for both critic_loss_fn and cql_alpha_loss_fn
+        """计算 Cal-QL/CQL 的保守项差值 ``cql_q_diff``。
+
+        核心思想：
+        - 对随机动作、当前策略动作、下一状态策略动作做采样；
+        - 通过
+            $\operatorname{LSE}(Q) = \tau \log\sum_i \exp(Q_i/\tau)$
+            近似 OOD 动作上界；
+        - 与数据动作 Q 值做差，得到保守惩罚。
+
+        关键量：
+        - ``cql_q_diff = cql_ood_values - q_pred``
+        - Cal-QL 会先将采样 Q 与 Monte-Carlo 下界做 ``max`` 裁剪。
         """
         info = {}
         batch_size = batch["rewards"].shape[0]
@@ -233,7 +257,16 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         return cql_q_diff, info
 
     def critic_loss_fn(self, batch, params: Params, rng: PRNGKey):
-        """classes that inherit this class can change this function"""
+        """标准 TD critic 损失。
+
+        公式：
+        - 目标值
+            $y = r + \gamma m \min_j Q_{\bar\theta_j}(s', a')$
+        - 损失
+            $L_{critic} = \mathbb{E}\left[(Q_\theta(s,a)-y)^2\right]$
+
+        其中 $m$ 是 ``mask``（终止状态为 0）。
+        """
         batch_size = batch["rewards"].shape[0]
         actions = batch["actions"][..., :-
                                    1] if self.config["fix_gripper"] else batch["actions"]
@@ -285,6 +318,12 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         return critic_loss, info
 
     def calql_critic_loss_fn(self, batch, params: Params, rng: PRNGKey):
+        """Cal-QL critic 损失：TD 损失 + CQL 保守正则。
+
+        公式：
+        - $L = L_{TD} + \alpha \cdot L_{CQL}$
+        - 其中 ``alpha`` 即 ``cql_alpha``。
+        """
         td_loss, td_loss_info = self.critic_loss_fn(batch, params, rng)
 
         cql_q_diff, cql_intermediate_results = self._get_cql_q_diff(
@@ -308,6 +347,18 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         return critic_loss, info
 
     def policy_loss_fn(self, batch, params: Params, rng: PRNGKey):
+        """策略损失：行为克隆一致性项 + Q 引导项。
+
+        组成：
+        1) 一致性/重建项（扩散时刻 $t$）：
+           $L_{bc}=\mathbb{E}[w(t)\|\hat{x}_0-x_0\|_2^2]$
+        2) 价值引导项：
+           $L_q=-\mathbb{E}[Q(s,a_\pi)]$
+        3) 总损失：
+           $L_{actor}=\lambda_{bc}L_{bc}+\lambda_qL_q$
+
+        其中 ``lambda_bc`` 对应 ``bc_weight``，``lambda_q`` 对应 ``q_weight``。
+        """
         batch_size = batch["rewards"].shape[0]
         # Consistency loss
         rng, noise_rng, indice_rng, policy_rng1, policy_rng2, policy_rng3, critic_rng = jax.random.split(
@@ -365,6 +416,7 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         return actor_loss, info
 
     def calql_loss_fns(self, batch):
+        """返回 Cal-QL 训练所需的 loss 函数字典。"""
         losses = {
             "actor": partial(self.policy_loss_fn, batch),
             "critic": partial(self.calql_critic_loss_fn, batch),
@@ -373,6 +425,7 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         return losses
 
     def loss_fns(self, batch):
+        """返回普通 Q-learning 训练所需的 loss 函数字典。"""
         losses = {
             "actor": partial(self.policy_loss_fn, batch),
             "critic": partial(self.critic_loss_fn, batch),
@@ -389,17 +442,14 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         networks_to_update: FrozenSet[str] = frozenset({"actor", "critic"}),
         **kwargs
     ) -> Tuple["ConrftCPOctoAgentSingleArm", dict]:
-        """
-        Take one gradient step on all (or a subset) of the networks in the agent.
+        """执行一次 Cal-QL 参数更新。
 
-        Parameters:
-            batch: Batch of data to use for the update. Should have keys:
-                "observations", "actions", "next_observations", "rewards", "masks", "mc_returns".
-            networks_to_update: Names of networks to update (default: all networks).
-                For example, in high-UTD settings it's common to update the critic
-                many times and only update the actor (and other networks) once.
-        Returns:
-            Tuple of (new agent, info dict).
+        作用：
+        - 数据解包与可选增强；
+        - 计算 actor/critic 梯度并按 ``networks_to_update`` 选择性更新；
+        - 对 target critic 做软更新：
+          $\bar\theta \leftarrow (1-\tau)\bar\theta + \tau\theta$；
+        - 返回新 agent 与监控信息。
         """
 
         batch_size = batch["rewards"].shape[0]
@@ -451,17 +501,9 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         networks_to_update: FrozenSet[str] = frozenset({"actor", "critic"}),
         **kwargs
     ) -> Tuple["ConrftCPOctoAgentSingleArm", dict]:
-        """
-        Take one gradient step on all (or a subset) of the networks in the agent.
+        """执行一次标准 Q-learning 参数更新（不含 CQL 项）。
 
-        Parameters:
-            batch: Batch of data to use for the update. Should have keys:
-                "observations", "actions", "next_observations", "rewards", "masks", "mc_returns".
-            networks_to_update: Names of networks to update (default: all networks).
-                For example, in high-UTD settings it's common to update the critic
-                many times and only update the actor (and other networks) once.
-        Returns:
-            Tuple of (new agent, info dict).
+        流程与 ``update_calql`` 一致，但 critic 损失使用纯 TD 形式。
         """
 
         batch_size = batch["rewards"].shape[0]
@@ -513,9 +555,11 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         seed: Optional[PRNGKey] = None,
         **kwargs,
     ) -> jnp.ndarray:
-        """
-        Sample actions from the policy network, **using an external RNG** (or approximating the argmax by the mode).
-        The internal RNG will not be updated.
+        """基于当前策略采样动作（推理接口）。
+
+        说明：
+        - 使用外部 ``seed``，不会修改 agent 内部 RNG；
+        - 若 ``fix_gripper=True``，会在末尾拼接默认夹爪动作 0。
         """
 
         actions, action_embeddings = self.forward_policy(
@@ -573,6 +617,13 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         bc_weight_min: float = 0.05,
         **kwargs,
     ):
+        """构建基础 ConRFT agent（给定 actor/critic 定义）。
+
+        作用：
+        - 初始化网络参数与优化器；
+        - 构建 ``JaxRLTrainState``（含 target 参数与 RNG）；
+        - 写入训练超参数配置（折扣、CQL、扩散一致性等）。
+        """
         networks = {
             "actor": actor_def,
             "critic": critic_def,
@@ -676,8 +727,13 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         bc_weight: float = 1.0,
         **kwargs,
     ):
-        """
-        Create a new pixel-based agent, with no encoders.
+        """构建像素输入版本的 ConRFT agent（含视觉编码器与 Octo 编码）。
+
+        作用：
+        - 根据 ``encoder_type`` 创建 ResNet 编码器；
+        - critic 使用视觉编码，actor 使用 Octo transformer 编码；
+        - 组合出 ``Critic`` 与 ``ConsistencyPolicy_octo`` 并调用 ``create`` 初始化；
+        - 按需加载 ResNet-10 预训练参数与 Octo 预训练参数。
         """
         policy_network_kwargs["activate_final"] = True
         critic_network_kwargs["activate_final"] = True
