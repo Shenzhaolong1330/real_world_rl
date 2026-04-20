@@ -166,13 +166,14 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         actions = batch["actions"][..., :-
                                    1] if self.config["fix_gripper"] else batch["actions"]
 
+        # q_pred 对应数据分布动作 Q(s,a)，后续会与 OOD 动作的 log-sum-exp 上界做差。
         rng, critic_rng = jax.random.split(rng)
         q_pred = self.forward_critic(
             batch['observations'], batch["embeddings"], actions, critic_rng, grad_params=grad_params,)
         chex.assert_shape(
             q_pred, (self.config["critic_ensemble_size"], batch_size))
 
-        """sample random actions"""
+        # 1) 从简单分布采样随机动作，作为 OOD 候选。
         rng, action_rng = jax.random.split(rng)
         if self.config["cql_action_sample_method"] == "uniform":
             cql_random_actions = jax.random.uniform(action_rng, shape=(
@@ -183,6 +184,7 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         else:
             raise NotImplementedError
 
+        # 2) 从当前策略在 s 与 s' 上分别采样动作，补充更“策略相关”的 OOD 候选。
         rng, current_a_rng, next_a_rng = jax.random.split(rng, 3)
         cql_current_actions = self.forward_policy_and_sample(
             batch["tasks"], batch['observations'], batch["embeddings"], current_a_rng, repeat=self.config["cql_n_actions"],)
@@ -192,11 +194,11 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         cql_next_actions = self.forward_policy_and_sample(
             batch["tasks"], batch['next_observations'], batch["next_embeddings"], next_a_rng, repeat=self.config["cql_n_actions"],)
 
-        # all_sampled_actions follows the order of [random, current, next]
+        # 所有候选动作按 [random, current, next] 拼接，便于后续分段统计可视化。
         all_sampled_actions = jnp.concatenate(
             [cql_random_actions, cql_current_actions, cql_next_actions,], axis=1,)
 
-        """q values of randomly sampled actions"""
+        # 评估每个候选动作的 Q 值：形状 [ensemble, B, 3*N]。
         rng, q_rng = jax.random.split(rng)
         cql_q_samples = self.forward_critic(
             batch["observations"], batch["embeddings"], all_sampled_actions, q_rng, grad_params=grad_params)
@@ -225,7 +227,7 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         else:
             critic_size = self.config["critic_ensemble_size"]
 
-        """Cal-QL"""
+        # Cal-QL：先用 Monte-Carlo return 对 OOD Q 做下界截断，防止保守项过强压低有效动作。
         n_actions_for_calql = self.config["cql_n_actions"] * 3
         mc_lower_bound = jnp.repeat(
             batch['mc_returns'].reshape(-1, 1), n_actions_for_calql, axis=1)
@@ -235,7 +237,7 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         calql_bound_rate = jnp.sum(cql_q_samples < mc_lower_bound) / num_vals
         cql_q_samples = jnp.maximum(cql_q_samples, mc_lower_bound)
 
-        # cql_importance_sample
+        # 当前实现不做重要性采样；只使用均匀/高斯 + 策略采样。
         assert self.config["cql_importance_sample"] is False
 
         cql_q_samples = jnp.concatenate(
@@ -245,7 +247,7 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         chex.assert_shape(cql_q_samples, (critic_size, batch_size,
                           self.config["cql_n_actions"] * 3 + 1,),)
 
-        """log sum exp of the ood actions"""
+        # OOD 上界：LSE(Q/τ)*τ，近似 max(Q) 但平滑可导。
         cql_ood_values = (jax.scipy.special.logsumexp(
             cql_q_samples / self.config["cql_temp"], axis=-1) * self.config["cql_temp"])
         chex.assert_shape(cql_ood_values, (critic_size, batch_size))
@@ -360,7 +362,7 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         其中 ``lambda_bc`` 对应 ``bc_weight``，``lambda_q`` 对应 ``q_weight``。
         """
         batch_size = batch["rewards"].shape[0]
-        # Consistency loss
+        # 这里一次性切多个 key，避免不同随机过程（噪声、t 采样、策略 dropout）相互污染。
         rng, noise_rng, indice_rng, policy_rng1, policy_rng2, policy_rng3, critic_rng = jax.random.split(
             rng, 7)
 
@@ -370,10 +372,12 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         actions = batch["actions"][..., :-
                                    1] if self.config["fix_gripper"] else batch["actions"]
         x_start = actions
+        # x_t = x_0 + sigma_t * eps：将干净动作加噪得到扩散中间状态。
         noise = jax.random.normal(
             noise_rng, shape=x_start.shape, dtype=x_start.dtype)
         dims = x_start.ndim
 
+        # 采用 Karras sigma 调度离散采样 t：先在线性空间采样，再通过 rho 映射回 sigma 空间。
         indices = jax.random.randint(
             indice_rng, (batch_size,), 0, self.config["num_scales"]-1)
 
@@ -385,9 +389,11 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
 
         x_t = x_start + noise * append_dims(t, dims)
 
+        # distiller 目标是从 (x_t, t, cond) 还原 x_0，形成一致性/蒸馏监督。
         distiller, _ = self.forward_policy(
             batch["tasks"], batch["observations"], batch["embeddings"], x_t, t, rng=policy_rng2, grad_params=params)
 
+        # 按 SNR 对不同噪声级别加权，避免高噪声或低噪声阶段主导梯度。
         snrs = get_snr(t)
         weights = get_weightings("karras", snrs, self.config["sigma_data"])
 
@@ -400,6 +406,7 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         q_new_actions = q_new_actions.mean(axis=0)
         chex.assert_shape(q_new_actions, (batch_size,))
 
+        # Q 引导项：最大化 Q 等价于最小化 -E[Q]。
         q_loss = - q_new_actions.mean()
 
         actor_loss = self.state.bc_weight * recon_loss + self.state.q_weight * q_loss
@@ -465,10 +472,10 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         batch = batch.copy(
             add_or_replace={"rewards": batch["rewards"] + self.config["reward_bias"]})
 
-        # Compute gradients and update params
+        # 生成 actor/critic 的 loss 闭包，再统一交给 train_state 执行反传和参数更新。
         calql_loss_fns = self.calql_loss_fns(batch, **kwargs)
 
-        # Only compute gradients for specified steps
+        # 对不在本轮更新集合中的网络返回 0 loss：保持接口统一且避免额外分支。
         assert networks_to_update.issubset(
             calql_loss_fns.keys()), f"Invalid gradient steps: {networks_to_update}"
         for key in calql_loss_fns.keys() - networks_to_update:
@@ -519,7 +526,7 @@ class ConrftCPOctoAgentSingleArm(flax.struct.PyTreeNode):
         batch = batch.copy(
             add_or_replace={"rewards": batch["rewards"] + self.config["reward_bias"]})
 
-        # Compute gradients and update params
+        # 与 update_calql 相同框架，但 critic 部分不包含 CQL 正则。
         loss_fns = self.loss_fns(batch, **kwargs)
 
         # Only compute gradients for specified steps
