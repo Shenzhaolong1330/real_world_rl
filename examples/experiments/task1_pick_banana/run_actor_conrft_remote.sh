@@ -8,7 +8,7 @@ export XLA_PYTHON_CLIENT_MEM_FRACTION=.2
 
 # Configuration - YOU NEED TO MODIFY THESE
 A800_IP="localhost"  # A800's IP (learner is running here)
-ROBOT_IP="192.168.1.100"  # ⚠️ CHANGE THIS to your robot machine IP
+ROBOT_IP="100.64.0.3"  # ⚠️ CHANGE THIS to your robot machine IP
 PYRO_PORT=9090
 CHECKPOINT_PATH="/root/online_rl/conrft/examples/experiments/task1_pick_banana/conrft"
 
