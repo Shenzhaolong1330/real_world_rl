@@ -17,12 +17,22 @@ flags.DEFINE_float("gamma", 0.95, "return discount")
 flags.DEFINE_float("reward_neg", 0.0, "reward_neg for spase reward envs")
 flags.DEFINE_float("reward_scale", 1.0, "reward_scale ")
 flags.DEFINE_float("reward_bias", 0.0, "reward_bias")
+flags.DEFINE_boolean("use_pyro_env", False, "Use Pyro5 remote environment")
+flags.DEFINE_string("pyro_env_ip", None, "IP address of the Pyro5 environment server")
+flags.DEFINE_integer("pyro_env_port", 9090, "Port of the Pyro5 environment server")
 
 
 def main(_):
     assert FLAGS.exp_name in CONFIG_MAPPING, 'Experiment folder not found.'
     config = CONFIG_MAPPING[FLAGS.exp_name]()
-    env = config.get_environment(fake_env=False, save_video=False, classifier=True)
+    
+    # Create environment based on mode
+    if FLAGS.use_pyro_env:
+        from serl_launcher.utils.pyro_env_wrapper import create_pyro_env
+        print(f"Connecting to Pyro5 remote environment at {FLAGS.pyro_env_ip}:{FLAGS.pyro_env_port}")
+        env = create_pyro_env(FLAGS.pyro_env_ip, FLAGS.pyro_env_port)
+    else:
+        env = config.get_environment(fake_env=False, save_video=False, classifier=True)
     FLAGS.reward_neg = config.reward_neg
     
     obs, info = env.reset()

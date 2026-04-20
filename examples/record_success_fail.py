@@ -12,6 +12,9 @@ from experiments.mappings import CONFIG_MAPPING
 FLAGS = flags.FLAGS
 flags.DEFINE_string("exp_name", None, "Name of experiment corresponding to folder.")
 flags.DEFINE_integer("successes_needed", 200, "Number of successful transistions to collect.")
+flags.DEFINE_boolean("use_pyro_env", False, "Use Pyro5 remote environment")
+flags.DEFINE_string("pyro_env_ip", None, "IP address of the Pyro5 environment server")
+flags.DEFINE_integer("pyro_env_port", 9090, "Port of the Pyro5 environment server")
 
 
 success_key = False
@@ -29,7 +32,14 @@ def main(_):
     listener.start()
     assert FLAGS.exp_name in CONFIG_MAPPING, 'Experiment folder not found.'
     config = CONFIG_MAPPING[FLAGS.exp_name]()
-    env = config.get_environment(fake_env=False, save_video=False, classifier=False, stack_obs_num=2)
+    
+    # Create environment based on mode
+    if FLAGS.use_pyro_env:
+        from serl_launcher.utils.pyro_env_wrapper import create_pyro_env
+        print(f"Connecting to Pyro5 remote environment at {FLAGS.pyro_env_ip}:{FLAGS.pyro_env_port}")
+        env = create_pyro_env(FLAGS.pyro_env_ip, FLAGS.pyro_env_port)
+    else:
+        env = config.get_environment(fake_env=False, save_video=False, classifier=False, stack_obs_num=2)
 
     obs, _ = env.reset()
     successes = []
