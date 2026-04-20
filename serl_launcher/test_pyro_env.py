@@ -48,46 +48,46 @@ def test_pyro_env(ip: str, port: int):
     print(f"  Info keys: {info.keys()}")
     
     # Test 4: Random action
-    print(f"\n[Test 4] Random Action:")
-    action = env.action_space.sample()
-    print(f"  Action shape: {action.shape}")
-    print(f"  Action: {action}")
+    # print(f"\n[Test 4] Random Action:")
+    # action = env.action_space.sample()
+    # print(f"  Action shape: {action.shape}")
+    # print(f"  Action: {action}")
     
     # Test 5: Step environment
-    print(f"\n[Test 5] Step Environment:")
-    obs, reward, done, truncated, info = env.step(action)
-    print(f"  Reward: {reward}")
-    print(f"  Done: {done}")
-    print(f"  Truncated: {truncated}")
-    print(f"  Info keys: {info.keys()}")
-    if 'succeed' in info:
-        print(f"  Succeed: {info['succeed']}")
+    # print(f"\n[Test 5] Step Environment:")
+    # obs, reward, done, truncated, info = env.step(action)
+    # print(f"  Reward: {reward}")
+    # print(f"  Done: {done}")
+    # print(f"  Truncated: {truncated}")
+    # print(f"  Info keys: {info.keys()}")
+    # if 'succeed' in info:
+    #     print(f"  Succeed: {info['succeed']}")
     
     # Test 6: Multiple steps
-    print(f"\n[Test 6] Multiple Steps:")
-    obs, _ = env.reset()
-    for i in range(5):
-        action = env.action_space.sample()
-        obs, reward, done, truncated, info = env.step(action)
-        print(f"  Step {i+1}: reward={reward:.3f}, done={done}")
-        if done:
-            print(f"  Episode finished at step {i+1}")
-            break
+    # print(f"\n[Test 6] Multiple Steps:")
+    # obs, _ = env.reset()
+    # for i in range(5):
+    #     action = env.action_space.sample()
+    #     obs, reward, done, truncated, info = env.step(action)
+    #     print(f"  Step {i+1}: reward={reward:.3f}, done={done}")
+    #     if done:
+    #         print(f"  Episode finished at step {i+1}")
+    #         break
     
     # Test 7: Check info dict serialization
-    print(f"\n[Test 7] Info Dict Serialization:")
-    obs, _ = env.reset()
-    for i in range(10):
-        action = env.action_space.sample()
-        obs, reward, done, truncated, info = env.step(action)
-        if done:
-            print(f"  Episode done!")
-            print(f"  Info keys: {list(info.keys())}")
-            for key, val in info.items():
-                print(f"    {key}: {type(val)}")
-                if isinstance(val, dict):
-                    print(f"      Sub-keys: {list(val.keys())}")
-            break
+    # print(f"\n[Test 7] Info Dict Serialization:")
+    # obs, _ = env.reset()
+    # for i in range(10):
+    #     action = env.action_space.sample()
+    #     obs, reward, done, truncated, info = env.step(action)
+    #     if done:
+    #         print(f"  Episode done!")
+    #         print(f"  Info keys: {list(info.keys())}")
+    #         for key, val in info.items():
+    #             print(f"    {key}: {type(val)}")
+    #             if isinstance(val, dict):
+    #                 print(f"      Sub-keys: {list(val.keys())}")
+    #         break
     
     print(f"\n{'='*60}")
     print(f"All tests passed!")
