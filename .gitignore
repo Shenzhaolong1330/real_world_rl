@@ -167,3 +167,8 @@ wandb
 .vscode
 .idea
 datasets/debug_dataset/bridge_dataset/1.0.0/action_*
+
+octo-small/
+
+classifier_ckpt/
+classifier_data/

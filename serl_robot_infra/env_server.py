@@ -120,8 +120,8 @@ def main():
     parser = argparse.ArgumentParser(description="Pyro5 Environment Server")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to")
     parser.add_argument("--port", type=int, default=9090, help="Port to listen on")
-    parser.add_argument("--task", type=str, default="task1_pick_banana", 
-                        help="Task config to use (e.g., task1_pick_banana)")
+    parser.add_argument("--task", type=str, default="task2_insert_vial", 
+                        help="Task config to use (e.g., task2_insert_vial)")
     args = parser.parse_args()
     
     print(f"Creating environment for task: {args.task}")

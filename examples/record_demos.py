@@ -11,7 +11,7 @@ from experiments.mappings import CONFIG_MAPPING
 from data_util import add_mc_returns_to_trajectory
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string("exp_name", None, "Name of experiment corresponding to folder.")
+flags.DEFINE_string("exp_name", "task2_insert_vial", "Name of experiment corresponding to folder.")
 flags.DEFINE_integer("successes_needed", 20, "Number of successful demos to collect.")
 flags.DEFINE_float("gamma", 0.95, "return discount")
 flags.DEFINE_float("reward_neg", 0.0, "reward_neg for spase reward envs")

@@ -3,13 +3,22 @@ import jax
 import numpy as np
 import jax.numpy as jnp
 
-from franka_env.envs.wrappers import (
-    Quat2EulerWrapper,
-    SpacemouseIntervention,
-    MultiCameraBinaryRewardClassifierWrapper,
-)
-from franka_env.envs.relative_env import RelativeFrame
-from franka_env.envs.franka_env import DefaultEnvConfig
+try:
+    from franka_env.envs.wrappers import (
+        Quat2EulerWrapper,
+        SpacemouseIntervention,
+        MultiCameraBinaryRewardClassifierWrapper,
+    )
+    from franka_env.envs.relative_env import RelativeFrame
+    from franka_env.envs.franka_env import DefaultEnvConfig
+except ModuleNotFoundError:
+    from serl_robot_infra.franka_env.envs.wrappers import (
+        Quat2EulerWrapper,
+        SpacemouseIntervention,
+        MultiCameraBinaryRewardClassifierWrapper,
+    )
+    from serl_robot_infra.franka_env.envs.relative_env import RelativeFrame
+    from serl_robot_infra.franka_env.envs.franka_env import DefaultEnvConfig
 from serl_launcher.wrappers.serl_obs_wrappers import SERLObsWrapper
 from serl_launcher.wrappers.chunking import ChunkingWrapper
 from serl_launcher.networks.reward_classifier import load_classifier_func
@@ -49,13 +58,13 @@ class EnvConfig(DefaultEnvConfig):
                   "side_classifier": lambda img: img[400:680, 400:1000],
                   "demo": lambda img: img[0:720, 0:1280]}
 
-    TARGET_POSE = np.array([0.438, 0.158, 0.194, np.pi, 0, np.pi/2])
-    RESET_POSE = np.array([0.438, 0.158, 0.244, np.pi, 0, np.pi/2])
-    ACTION_SCALE = np.array([0.08, 0.2, 1])
+    TARGET_POSE = np.array([0.400, 0.138, 0.241, np.pi, 0, np.pi/2])
+    RESET_POSE = np.array([0.400, 0.138, 0.341, np.pi, 0, np.pi/2])
+    ACTION_SCALE = np.array([0.05, 0.2, 1])
     RANDOM_RESET = True
     DISPLAY_IMAGE = True
     RANDOM_XY_RANGE = 0.05
-    RANDOM_RZ_RANGE = 0.03
+    RANDOM_RZ_RANGE = 0.05
     ABS_POSE_LIMIT_HIGH = TARGET_POSE + np.array([0.1, 0.1, 0.1, 0.01, 0.01, 0.3])
     ABS_POSE_LIMIT_LOW = TARGET_POSE - np.array([0.1, 0.1, 0.05, 0.01, 0.01, 0.3])
     COMPLIANCE_PARAM = {
@@ -136,7 +145,8 @@ class TrainConfig(DefaultTrainingConfig):
                 def sigmoid(x): return 1 / (1 + jnp.exp(-x))
                 # For close cap task: classifier detects if cap is closed
                 # Success condition: cap is closed (classifier > 0.9) and gripper is open
-                if sigmoid(classifier(obs)[0]) > 0.9 and env.curr_gripper_pos > 0.5:
+                # if sigmoid(classifier(obs)[0]) > 0.9 and env.curr_gripper_pos > 0.5:
+                if sigmoid(classifier(obs)[0]) > 0.9:
                     return 10.0
                 else:
                     return self.reward_neg

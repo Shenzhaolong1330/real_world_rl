@@ -10,7 +10,7 @@ from pynput import keyboard
 from experiments.mappings import CONFIG_MAPPING
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string("exp_name", None, "Name of experiment corresponding to folder.")
+flags.DEFINE_string("exp_name", "task2_insert_vial", "Name of experiment corresponding to folder.")
 flags.DEFINE_integer("successes_needed", 200, "Number of successful transistions to collect.")
 flags.DEFINE_boolean("use_pyro_env", False, "Use Pyro5 remote environment")
 flags.DEFINE_string("pyro_env_ip", None, "IP address of the Pyro5 environment server")

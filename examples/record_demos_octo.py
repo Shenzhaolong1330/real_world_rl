@@ -14,19 +14,33 @@ from octo.model.octo_model import OctoModel
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(
-    "exp_name", None, "Name of experiment corresponding to folder.")
-flags.DEFINE_integer("successes_needed", 20,
+    "exp_name", "task2_insert_vial", "Name of experiment corresponding to folder.")
+flags.DEFINE_integer("successes_needed", 30,
                      "Number of successful demos to collect.")
 flags.DEFINE_float("reward_scale", 1.0, "reward_scale ")
 flags.DEFINE_float("reward_bias", 0.0, "reward_bias")
 flags.DEFINE_boolean("use_pyro_env", False, "Use Pyro5 remote environment")
 flags.DEFINE_string("pyro_env_ip", None, "IP address of the Pyro5 environment server")
 flags.DEFINE_integer("pyro_env_port", 9090, "Port of the Pyro5 environment server")
+flags.DEFINE_string(
+    "octo_path",
+    "/home/deepcybo/worksplace/real_world_rl/octo-small",
+    "Optional override for Octo checkpoint path. If unset, uses OCTO_PATH env var, then task config.octo_path.",
+)
 
 
 def main(_):
     assert FLAGS.exp_name in CONFIG_MAPPING, 'Experiment folder not found.'
     config = CONFIG_MAPPING[FLAGS.exp_name]()
+
+    octo_path = FLAGS.octo_path or os.environ.get("OCTO_PATH") or config.octo_path
+    if not octo_path.startswith("hf://"):
+        config_json_path = os.path.join(octo_path, "config.json")
+        if not os.path.exists(config_json_path):
+            raise FileNotFoundError(
+                f"Octo checkpoint path is not accessible: '{octo_path}'. "
+                "Please pass --octo_path=/path/to/octo-small or set OCTO_PATH."
+            )
     
     # Create environment based on mode
     if FLAGS.use_pyro_env:
@@ -37,7 +51,8 @@ def main(_):
         env = config.get_environment(
             fake_env=False, save_video=False, classifier=True, stack_obs_num=2)
 
-    model = OctoModel.load_pretrained(config.octo_path)
+    print(f"Loading Octo checkpoint from: {octo_path}")
+    model = OctoModel.load_pretrained(octo_path)
     tasks = model.create_tasks(texts=[config.task_desc])
     # model = None
     # tasks = None

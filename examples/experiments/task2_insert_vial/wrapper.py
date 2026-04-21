@@ -1,13 +1,20 @@
 from typing import OrderedDict
-from franka_env.camera.rs_capture import RSCapture
-from franka_env.camera.video_capture import VideoCapture
-from franka_env.utils.rotations import euler_2_quat
 import numpy as np
 import requests
 import copy
 import gymnasium as gym
 import time
-from franka_env.envs.franka_env import FrankaEnv
+
+try:
+    from franka_env.camera.rs_capture import RSCapture
+    from franka_env.camera.video_capture import VideoCapture
+    from franka_env.utils.rotations import euler_2_quat
+    from franka_env.envs.franka_env import FrankaEnv
+except ModuleNotFoundError:
+    from serl_robot_infra.franka_env.camera.rs_capture import RSCapture
+    from serl_robot_infra.franka_env.camera.video_capture import VideoCapture
+    from serl_robot_infra.franka_env.utils.rotations import euler_2_quat
+    from serl_robot_infra.franka_env.envs.franka_env import FrankaEnv
 
 class InsertVialEnv(FrankaEnv):
     def __init__(self, **kwargs):
@@ -43,7 +50,7 @@ class InsertVialEnv(FrankaEnv):
         time.sleep(0.5)
 
         obs, info = super().reset(**kwargs)
-        self._send_gripper_command(1.0)
+        # self._send_gripper_command(1.0)
         time.sleep(1)
         self.success = False
         self._update_currpos()
