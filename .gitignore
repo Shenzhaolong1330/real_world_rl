@@ -172,3 +172,8 @@ octo-small/
 
 classifier_ckpt/
 classifier_data/
+
+demo_data/
+checkpoint_**/
+buffer/
+**_buffer/

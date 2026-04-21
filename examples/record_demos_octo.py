@@ -19,12 +19,12 @@ flags.DEFINE_integer("successes_needed", 30,
                      "Number of successful demos to collect.")
 flags.DEFINE_float("reward_scale", 1.0, "reward_scale ")
 flags.DEFINE_float("reward_bias", 0.0, "reward_bias")
-flags.DEFINE_boolean("use_pyro_env", False, "Use Pyro5 remote environment")
-flags.DEFINE_string("pyro_env_ip", None, "IP address of the Pyro5 environment server")
+flags.DEFINE_boolean("use_pyro_env", True, "Use Pyro5 remote environment")
+flags.DEFINE_string("pyro_env_ip", "100.64.0.3", "IP address of the Pyro5 environment server")
 flags.DEFINE_integer("pyro_env_port", 9090, "Port of the Pyro5 environment server")
 flags.DEFINE_string(
     "octo_path",
-    "/home/deepcybo/worksplace/real_world_rl/octo-small",
+    "/home/szl/real_world_rl/octo-small",
     "Optional override for Octo checkpoint path. If unset, uses OCTO_PATH env var, then task config.octo_path.",
 )
 

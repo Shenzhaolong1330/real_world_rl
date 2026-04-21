@@ -22,12 +22,12 @@ echo "=========================================="
 # Start learner (fake_env=True automatically)
 cd /home/szl/real_world_rl/examples
 python train_conrft_octo.py \
-    --exp_name=task1_pick_banana \
+    --exp_name=task2_insert_vial \
     --checkpoint_path=$CHECKPOINT_PATH \
     --q_weight=1.0 \
     --bc_weight=0.1 \
     --demo_path=$DEMO_PATH \
-    --pretrain_steps=20000 \
+    --pretrain_steps=1000 \
     --debug=False \
     --learner \
     --ip=$A800_IP

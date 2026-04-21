@@ -123,7 +123,7 @@ class TrainConfig(DefaultTrainingConfig):
     setup_mode = "single-arm-learned-gripper"
     reward_neg = -0.05
     task_desc = "Insert the vial into the rack"
-    octo_path = "/root/online_rl/octo_model/octo-small"
+    octo_path = "/home/szl/real_world_rl/octo-small"
 
     def get_environment(self, fake_env=False, save_video=False, classifier=False, stack_obs_num=1):
         env = InsertVialEnv(fake_env=fake_env, save_video=save_video, config=EnvConfig())
