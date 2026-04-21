@@ -12,6 +12,7 @@ import argparse
 import sys
 import os
 import base64
+import importlib
 
 # Register numpy array serializer for Pyro5
 from Pyro5.serializers import SerpentSerializer
@@ -49,8 +50,21 @@ SerpentSerializer.register_dict_to_class('numpy.ndarray', dict_to_numpy)
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import your environment config
-from examples.experiments.task1_pick_banana.config import get_environment
+def load_get_environment(task_name: str):
+    module_name = f"examples.experiments.{task_name}.config"
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError as error:
+        raise ModuleNotFoundError(
+            f"Failed to import task config module '{module_name}'. "
+            "Please check --task and ensure the task folder exists under examples/experiments/."
+        ) from error
+
+    if not hasattr(module, "get_environment"):
+        raise AttributeError(
+            f"Module '{module_name}' does not define 'get_environment'."
+        )
+    return module.get_environment
 
 
 @Pyro5.api.expose
@@ -125,6 +139,7 @@ def main():
     args = parser.parse_args()
     
     print(f"Creating environment for task: {args.task}")
+    get_environment = load_get_environment(args.task)
     
     # Create the real environment (not fake_env)
     env = get_environment(
