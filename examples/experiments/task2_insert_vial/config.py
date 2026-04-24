@@ -124,6 +124,19 @@ class TrainConfig(DefaultTrainingConfig):
     reward_neg = -0.05
     task_desc = "Insert the vial into the rack"
     octo_path = "/home/szl/real_world_rl/octo-small"
+    
+    # 稠密奖励配置
+    use_dense_reward = True  # 是否使用稠密奖励
+    success_reward = 10.0    # 成功奖励值
+    success_threshold = 0.9  # 分类器阈值
+    
+    # GRM 稠密奖励配置
+    use_grm_reward = False  # 是否使用 GRM 稠密奖励（优先级高于分类器）
+    weight_path = "/home/szl/real_world_rl/weights/Robo-Dopamine-GRM-2.0-8B-Preview"  # GRM 模型路径
+    frame_interval = 4  # GRM 推理的帧间隔
+    batch_dopamine = 45  # GRM 批处理大小
+    visualize = False  # 是否可视化 GRM 奖励
+    only_vis_avg = False  # 是否只可视化平均奖励
 
     def get_environment(self, fake_env=False, save_video=False, classifier=False, stack_obs_num=1):
         env = InsertVialEnv(fake_env=fake_env, save_video=save_video, config=EnvConfig())
@@ -133,8 +146,10 @@ class TrainConfig(DefaultTrainingConfig):
         env = Quat2EulerWrapper(env)
         env = SERLObsWrapper(env, proprio_keys=self.proprio_keys)
         env = ChunkingWrapper(env, obs_horizon=stack_obs_num, act_exec_horizon=None)
-        if classifier:
-            classifier = load_classifier_func(
+        
+        # 添加稠密奖励分类器
+        if classifier and self.use_dense_reward:
+            classifier_func = load_classifier_func(
                 key=jax.random.PRNGKey(0),
                 sample=env.observation_space.sample(),
                 image_keys=self.classifier_keys,
@@ -142,16 +157,15 @@ class TrainConfig(DefaultTrainingConfig):
             )
 
             def reward_func(obs):
-                def sigmoid(x): return 1 / (1 + jnp.exp(-x))
-                # For close cap task: classifier detects if cap is closed
-                # Success condition: cap is closed (classifier > 0.9) and gripper is open
-                # if sigmoid(classifier(obs)[0]) > 0.9 and env.curr_gripper_pos > 0.5:
-                if sigmoid(classifier(obs)[0]) > 0.9:
-                    return 10.0
+                sigmoid = lambda x: 1 / (1 + jnp.exp(-x))
+                logit = classifier_func(obs)[0]
+                if sigmoid(logit) > self.success_threshold:
+                    return self.success_reward
                 else:
                     return self.reward_neg
 
             env = MultiCameraBinaryRewardClassifierWrapper(env, reward_func)
+        
         env = GripperPenaltyWrapper(env, penalty=-0.2)
         return env
 
