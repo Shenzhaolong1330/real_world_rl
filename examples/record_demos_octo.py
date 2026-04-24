@@ -24,7 +24,8 @@ flags.DEFINE_string("pyro_env_ip", "100.64.0.3", "IP address of the Pyro5 enviro
 flags.DEFINE_integer("pyro_env_port", 9090, "Port of the Pyro5 environment server")
 flags.DEFINE_string(
     "octo_path",
-    "/home/szl/real_world_rl/octo-small",
+    # "/home/szl/real_world_rl/octo-small",
+    "/home/deepcybo/worksplace/real_world_rl/octo-small",
     "Optional override for Octo checkpoint path. If unset, uses OCTO_PATH env var, then task config.octo_path.",
 )
 

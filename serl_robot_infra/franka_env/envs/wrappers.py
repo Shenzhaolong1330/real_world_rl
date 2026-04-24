@@ -429,6 +429,11 @@ class SpacemouseIntervention(gym.ActionWrapper):
         info["right"] = self.right
         return obs, rew, done, truncated, info
 
+    def close(self):
+        if hasattr(self, "expert") and self.expert is not None:
+            self.expert.close()
+        return self.env.close()
+
 class DualSpacemouseIntervention(gym.ActionWrapper):
     def __init__(self, env, action_indices=None, gripper_enabled=True):
         super().__init__(env)
@@ -501,6 +506,11 @@ class DualSpacemouseIntervention(gym.ActionWrapper):
     
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
+
+    def close(self):
+        if hasattr(self, "expert") and self.expert is not None:
+            self.expert.close()
+        return self.env.close()
 
 
 class GripperPenaltyWrapper(gym.RewardWrapper):
