@@ -671,5 +671,66 @@ class StackObsWrapper(gym.Wrapper):
             self._frames[key].pop(0)  # Remove the oldest frame
             self._frames[key].append(next_obs[key].squeeze(0))  # Add the new frame
         return self._get_stacked_obs(), reward, done, truncated, info
-        
-        
+
+
+class CompletionRewardClassifierWrapper(gym.Wrapper):
+    """
+    Wrapper for human-labeled task completion using keyboard input.
+    
+    Usage:
+        - Press '.' key twice within 0.5 seconds to mark task as successful
+        - Used for collecting success/failure data for reward classifier training
+    """
+
+    def __init__(self, env: Env, target_hz=None):
+        super().__init__(env)
+        self.target_hz = target_hz
+        self.completion_reward = 0  # Reward for task completion
+        self.done = False  # Track if the task is marked as done
+        self.press = None
+
+        # Lazy import keyboard to avoid X server dependency on headless servers
+        from pynput import keyboard
+
+        def on_press(key):
+            if key == keyboard.KeyCode.from_char('.'):
+                now = time.time()
+                # Double press detection within 0.5 seconds
+                if self.press is not None and (now - self.press < 0.5):
+                    self.done = True
+                    self.completion_reward = 1.0
+                    print("===================== done ==========================")
+                    self.press = None  # Reset to avoid continuous triggering
+                else:
+                    # Record first press time
+                    self.press = now
+
+        listener = keyboard.Listener(on_press=on_press)
+        listener.start()
+
+    def step(self, action):
+        start_time = time.time()
+
+        obs, rew, done_step, truncated, info = self.env.step(action)
+
+        # Final done: step_done takes priority, otherwise use self.done
+        done = done_step or self.done
+
+        rew = self.completion_reward
+        info['succeed'] = done
+
+        if done:
+            self.completion_reward = 0
+
+        if self.target_hz is not None:
+            time.sleep(max(0, 1 / self.target_hz - (time.time() - start_time)))
+
+        return obs, rew, done, truncated, info
+
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
+        info['succeed'] = False
+        self.done = False
+        return obs, info
+
+
